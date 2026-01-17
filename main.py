@@ -2,19 +2,31 @@ import re # for regular expressions
 import urllib.parse # for URL encoding
 import os.path
 import pathlib
+import datetime
+
+# argument handling
+import argparse
+parser = argparse.ArgumentParser(description="""
+Recodes links in Markdown documents from WikMD to Obsidian format
+""")
+parser.add_argument("-f -filename",
+                  action="store", type=str, dest="file_name", default="",
+                  help="Input file")
+
+options = parser.parse_args()
 
 def make_re(expr:str) -> str:
     return re.compile(expr, re.IGNORECASE + re.VERBOSE)
 
 # Set up our compiled regular expressions
-md_link = make_re(r'\[.*\]\(.*\)') # [<text>](<link>)
+md_link = make_re(r'\[.*?\]\(.*?\)') # [<text>](<link>)
 ext_link = make_re(r'^.+\:.+') # URL including schema
 url_schema = make_re(r'^\(((http:)|(https:)|(mailto:)|(file:))')
 anchor_link = make_re(r'^\#.+') # #<text>
 anchor_schema = make_re(r'^\(\#.+')
 link_sep = make_re(r'\]\(') # just the "](" bit
-link_body = make_re(r'^\(.+\)$') # full "(<text>)"
-wiki_link = make_re(r'\[\[.*\]\]') # [[<text>]]
+link_body = make_re(r'^\(.+?\)$') # full "(<text>)"
+wiki_link = make_re(r'\[\[.*?\]\]') # [[<text>]]
 file_suffix = make_re(r'\.[a-zA-Z]{1,6}$') # .<text>)<EOL>
 
 result = []
@@ -53,14 +65,13 @@ def process_md(line:str) -> str:
     Amend all MarkDown links in `line`
     return updated line text
     '''
-    rl = md_link.finditer(line)
-    for r in rl:
-        # in truth this will only work for a single link per line.
-        # Multiple links may cause the start/end offsets to be wrong
-        # really need to re-parse in some way...
-        # group = r.group()
-        s = r.start()
-        e = r.end()
+    # may have more than on link per line so count first
+    ll = md_link.findall(line)
+    count = len(ll) 
+    while (lnk:=md_link.search(line)) is not None and count > 0:
+        # print(f"Line: |{line}|")
+        s = lnk.start()
+        e = lnk.end()
         front = line[:s]
         mid = line[s:e]
         back = line[e:]
@@ -84,9 +95,26 @@ def process_md(line:str) -> str:
         full_link = text + new_url
         line = front + full_link + back
         # print(f"New line: |{line}|")
+        count -= 1
     return line
 
 def process_wikilink(line:str) -> str:
+    '''
+    Amend all Wikilink style links to be markdown-style links
+    Return updated line
+    '''
+    while (lnk:=wiki_link.search(line)) is not None:
+        # print(f"Line: |{line}|")
+        s = lnk.start()
+        e = lnk.end()
+        front = line[:s]
+        mid = line[s:e]
+        back = line[e:]
+        # print(f"Mid: |{mid}|")
+        txt =  mid[2:len(mid)-2]
+        new_mid = "["+txt+"]("+txt+".md)"
+        line = front + new_mid + back
+        # print(f"updated line: |{line}|")
     return(line)
 
 
@@ -96,7 +124,9 @@ def one_file(title:str) -> int:
     f_name, f_ext = os.path.splitext(title)
     f_new = f_name+"_new"+f_ext
     lines_out = ""
+    line_no = 0
     changed = False
+    changed_lines = []
     # f_out = open(f_new, "w")
     count = len(lines)
     print(f"Found {count} lines in {title}")
@@ -105,28 +135,37 @@ def one_file(title:str) -> int:
         # print("-------------")
         # print(line, end="")
         saved_line = line
-        if md_link.search(line) is not None:
-            line = process_md(line)
+        # Have to do wiki links first 
+        # because processing them produces Markdown links...
         if wiki_link.search(line) is not None:
             line = process_wikilink(line)
-        # rl = wiki_link.finditer(line)
-        # for r in rl:
-        #     result.append(f"Wiki: {r.group()} at {r.span()} ")
-        # if len(result)>0:
-        #     print("".join(result))
+        if md_link.search(line) is not None:
+            line = process_md(line)
         lines_out += line
+        line_no += 1
         if saved_line != line:
             changed = True
+            changed_lines.append(f"{line_no}")
     if changed:
+        summary = f"""
+
+- Transcoded from WikMD on {datetime.datetime.now().strftime("%c")}
+\t- {line_no} lines written, {len(changed_lines)} changed.
+\t- Lines: """
+        for cl in changed_lines:
+            summary += f"{cl}, "
+        summary = summary[:-2] + "\n"
+        lines_out += summary
         f_name, f_ext = os.path.splitext(title)
         f_new = f_name+"_new"+f_ext
         f_out = pathlib.Path(f_new)
         f_out.write_text(lines_out)
+        print(f"{title} had {changed_lines} changed")
 
     return count
 
 def main():
-    print(one_file("links.md"))
+    one_file(options.file_name)
 
 if __name__ == "__main__":
     main()
