@@ -1,4 +1,4 @@
-# A little I made to assist in the conversion of WikMD markdown files to Obsidian markdown
+# A little script I made to assist in the conversion of WikMD markdown files to Obsidian markdown
 
 **`WikMD`** is flexible with link formats. In particular:
  - it allows both standard MarkDown links `[displayed words](hidden URL)` and Wiki links `[[words which are also the link]]`.
