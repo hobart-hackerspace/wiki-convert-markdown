@@ -140,27 +140,31 @@ def process_indenting(line: str) -> str:
     Amend all indenting so that we only use tabs
     Otherwise the conversion to HTML stuffs up indents
     """
-    if (spaces_indent.search(line)) is not None:
-        # print(f"Line: |{line}|")
-        assert line[0:4] == "    ", f"Regexp error first indent, line: {line}"
-        line = "\t" + line[4:]
-        while (indent := tab_spaces.search(line)) is not None:
-            s = indent.start()
-            e = indent.end()
-            front = line[:s]
-            mid = line[s:e]
-            assert mid == "\t    ", f"Regexp error sunseq indent, line: {line}"
-            back = line[e:]
-            line = front + "\t\t" + back
-        # print(f"updated line: |{line}|")
+    # print(f"Line: |{line}|")
+    assert line[0:4] == "    ", f"Regexp error first indent, line: {line}"
+    line = "\t" + line[4:]
+    while (indent := tab_spaces.search(line)) is not None:
+        s = indent.start()
+        e = indent.end()
+        front = line[:s]
+        mid = line[s:e]
+        assert mid == "\t    ", f"Regexp error sunseq indent, line: {line}"
+        back = line[e:]
+        line = front + "\t\t" + back
+    # print(f"updated line: |{line}|")
     return line
 
 
 def one_file(title: str) -> int:
+    """
+    Reads one file and applies the relevant format changes.
+    If changes are necessary the updated content is written to
+    a new file of the same name. The origianl file is renamed
+    with "_wikmd" appended to its title
+    """
     f_in = open(title, "r")
     lines = f_in.readlines()
-    f_name, f_ext = os.path.splitext(title)
-    f_new = f_name + "_new" + f_ext
+    f_in.close()
     lines_out = ""
     line_no = 0
     changed = False
@@ -179,8 +183,8 @@ def one_file(title: str) -> int:
             line = process_wikilink(line)
         if md_link.search(line) is not None:
             line = process_md(line)
-        # tidy up indenting
-        line = process_indenting(line)
+        if (spaces_indent.search(line)) is not None:
+            line = process_indenting(line)
         lines_out += line
         line_no += 1
         if saved_line != line:
@@ -197,8 +201,9 @@ def one_file(title: str) -> int:
         summary = summary[:-2] + "\n"
         lines_out += summary
         f_name, f_ext = os.path.splitext(title)
-        f_new = f_name + "_new" + f_ext
-        f_out = pathlib.Path(f_new)
+        f_old = f_name + "_wikmd" + f_ext
+        os.rename(title, f_old)
+        f_out = pathlib.Path(title)
         f_out.write_text(lines_out)
         print(f"{title} had {changed_lines} changed")
 
