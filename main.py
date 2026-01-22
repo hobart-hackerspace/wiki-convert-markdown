@@ -39,6 +39,7 @@ link_sep = make_re(r"\]\(")  # just the "](" bit
 link_body = make_re(r"^\(.+?\)$")  # full "(<text>)"
 wiki_link = make_re(r"\[\[.*?\]\]")  # [[<text>]]
 file_suffix = make_re(r"\.[a-zA-Z]{1,6}$")  # .<text>)<EOL>
+img_link = make_re(r"\(\/img\/")  # (/img/
 # Next two can't use "re.VEBOSE" because it ignores whitespace in the RE
 spaces_indent = re.compile(r"^    ")  # 4 spaces at line start: 1st indent
 tab_spaces = re.compile(r"\t    ")  # tab followed by 4 spaces: subseq indents
@@ -148,19 +149,45 @@ def process_indenting(line: str) -> str:
         e = indent.end()
         front = line[:s]
         mid = line[s:e]
-        assert mid == "\t    ", f"Regexp error sunseq indent, line: {line}"
+        assert mid == "\t    ", f"Regexp error subseq indent, line: {line}"
         back = line[e:]
         line = front + "\t\t" + back
     # print(f"updated line: |{line}|")
     return line
 
 
+def process_imglink(line: str) -> str:
+    """
+    Amend al links to the `/img/` directory to be to `attachments/`
+    The leading slash is omitted because we set attachments in Obsidian
+    to be local to the current folder
+
+    Return updated line
+    """
+    while (lnk := img_link.search(line)) is not None:
+        # print(f"Line: |{line}|")
+        s = lnk.start()
+        e = lnk.end()
+        front = line[:s]
+        mid = line[s:e]
+        back = line[e:]
+        # print(f"Mid: |{mid}|")
+        assert mid == "(/img/", f"Regexp error /img/ link, line: {line}"
+        new_mid = "attachments/"
+        line = front + new_mid + back
+        # print(f"updated line: |{line}|")
+    return line
+
+
 def one_file(title: str) -> int:
     """
     Reads one file and applies the relevant format changes.
+
     If changes are necessary the updated content is written to
     a new file of the same name. The origianl file is renamed
     with "_wikmd" appended to its title
+
+    Returns a count of lines changed
     """
     f_in = open(title, "r")
     lines = f_in.readlines()
@@ -183,8 +210,10 @@ def one_file(title: str) -> int:
             line = process_wikilink(line)
         if md_link.search(line) is not None:
             line = process_md(line)
-        if (spaces_indent.search(line)) is not None:
+        if spaces_indent.search(line) is not None:
             line = process_indenting(line)
+        if img_link.search(line) is not None:
+            line = process_imglink(line)
         lines_out += line
         line_no += 1
         if saved_line != line:
@@ -206,8 +235,10 @@ def one_file(title: str) -> int:
         f_out = pathlib.Path(title)
         f_out.write_text(lines_out)
         print(f"{title} had {changed_lines} changed")
-
-    return count
+        return len(changed_lines)
+    else:
+        print("None changed")
+        return 0
 
 
 def main():
